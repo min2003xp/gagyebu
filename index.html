@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f7d6d">
+  <title>우리집 가계부</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="가계부">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn" id="prev-month" aria-label="이전 달">‹</button>
+    <h1 id="month-label"></h1>
+    <button class="icon-btn" id="next-month" aria-label="다음 달">›</button>
+  </header>
+
+  <main>
+    <section id="view-auth" class="view"></section>
+    <section id="view-list" class="view active"></section>
+    <section id="view-stats" class="view"></section>
+    <section id="view-budget" class="view"></section>
+    <section id="view-assets" class="view"></section>
+    <section id="view-settings" class="view"></section>
+  </main>
+
+  <button id="fab" class="fab" aria-label="내역 추가">+</button>
+
+  <nav class="tabbar">
+    <button data-view="list" class="active"><span>📒</span>내역</button>
+    <button data-view="stats"><span>📊</span>통계</button>
+    <button data-view="budget"><span>🎯</span>예산</button>
+    <button data-view="assets"><span>💎</span>자산</button>
+    <button data-view="settings"><span>⚙️</span>설정</button>
+  </nav>
+
+  <dialog id="tx-dialog" class="sheet">
+    <form id="tx-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2 id="tx-title">내역 추가</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+
+      <div class="seg" id="tx-type">
+        <button type="button" data-type="expense">지출</button>
+        <button type="button" data-type="income">수입</button>
+      </div>
+
+      <label class="amount-field">
+        <input id="tx-amount" class="money" inputmode="numeric" autocomplete="off" placeholder="0">
+        <b>원</b>
+      </label>
+
+      <div class="field">
+        <span class="field-label">카테고리</span>
+        <div id="tx-cats" class="chips"></div>
+      </div>
+
+      <label class="field" id="field-date">
+        <span class="field-label">날짜</span>
+        <input id="tx-date" type="date">
+      </label>
+
+      <label class="field" id="field-day" hidden>
+        <span class="field-label">매달 며칠에?</span>
+        <select id="tx-day"></select>
+        <small class="muted">그 달에 없는 날짜(예: 31일)는 말일에 들어가요. 이번 달부터 적용돼요.</small>
+      </label>
+
+      <div class="field">
+        <span class="field-label">누가</span>
+        <div class="seg" id="tx-who"></div>
+      </div>
+
+      <label class="field">
+        <span class="field-label">메모</span>
+        <input id="tx-memo" maxlength="40" placeholder="예: 마트 장보기">
+      </label>
+
+      <div class="sheet-actions">
+        <button type="button" id="tx-delete" class="btn danger" hidden>삭제</button>
+        <button type="submit" class="btn primary">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="asset-dialog" class="sheet">
+    <form id="asset-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2 id="asset-title">자산 추가</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+
+      <label class="field" id="asset-name-field">
+        <span class="field-label">이름</span>
+        <input id="asset-name" maxlength="20" placeholder="예: 국민은행 적금, 전세 보증금">
+      </label>
+
+      <div class="field" id="asset-kind-field">
+        <span class="field-label">종류</span>
+        <div id="asset-kinds" class="chips"></div>
+      </div>
+
+      <div class="field" id="asset-owner-field">
+        <span class="field-label">누구 것</span>
+        <div class="seg" id="asset-owner"></div>
+      </div>
+
+      <div class="field">
+        <span class="field-label" id="asset-balance-label">현재 금액</span>
+        <label class="amount-field">
+          <input id="asset-balance" class="money" inputmode="numeric" autocomplete="off" placeholder="0">
+          <b>원</b>
+        </label>
+      </div>
+
+      <div class="sheet-actions">
+        <button type="button" id="asset-delete" class="btn danger" hidden>삭제</button>
+        <button type="submit" class="btn primary">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="news-dialog" class="sheet">
+    <div class="sheet-body">
+      <div class="sheet-head">
+        <h2>변경 기록</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+      <div id="news-list"></div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script type="module" src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(console.error));
+    }
+  </script>
+</body>
+</html>

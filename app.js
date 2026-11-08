@@ -1,6 +1,6 @@
 import { createStore } from './store.js';
 import { buildDigest, ACTION_LABEL, QUIET_MINUTES } from './digest.js';
-import { SUPABASE_URL } from './config.js';
+import { SUPABASE_URL, VAPID_PUBLIC_KEY } from './config.js';
 
 /* ---------- 작은 도우미들 ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -416,6 +416,77 @@ function renderAssets() {
     </div>`;
 }
 
+/* ---------- 이 폰에서 푸시 알림 받기 ---------- */
+// unsupported | ios-browser | denied | on | off | busy
+let pushState = 'off';
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+async function refreshPushState() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    pushState = isIOS && !isStandalone ? 'ios-browser' : 'unsupported';
+  } else if (Notification.permission === 'denied') {
+    pushState = 'denied';
+  } else {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    pushState = sub && Notification.permission === 'granted' ? 'on' : 'off';
+    // 다시 로그인했을 때 등을 대비해 서버에도 다시 저장
+    if (sub && pushState === 'on' && store.status === 'ready') store.savePushSubscription(sub).catch(console.error);
+  }
+  if (view === 'settings') render();
+}
+
+function pushBlock() {
+  const partner = esc(names()[other()]);
+  const msg = {
+    'ios-browser': `아이폰은 Safari에서 <b>공유 → 홈 화면에 추가</b>로 설치한 앱을 열어야 알림을 켤 수 있어요.`,
+    unsupported: '이 브라우저에서는 알림을 받을 수 없어요. 폰에 설치한 앱에서 켜 주세요.',
+    denied: '알림이 차단돼 있어요. 폰 <b>설정 → 알림</b>에서 가계부 알림을 허용해 주세요.',
+    on: `✅ 이 폰에서 ${partner}의 변경 알림을 받고 있어요.`,
+    off: `이 폰에서 ${partner}의 변경 알림을 받으려면 켜 주세요.`,
+    busy: '설정하는 중…',
+  }[pushState];
+  const btn = pushState === 'on' ? `<button class="btn block" data-act="push-off">이 폰 알림 끄기</button>`
+    : pushState === 'off' ? `<button class="btn primary block" data-act="push-on">🔔 이 폰에서 알림 받기</button>` : '';
+  return `<div class="tip" style="margin-top:12px">${msg}</div>${btn}`;
+}
+
+const b64ToBytes = s => {
+  const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(b, c => c.charCodeAt(0));
+};
+
+async function pushOn() {
+  pushState = 'busy'; render();
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { await refreshPushState(); return toast('알림이 허용되지 않았어요'); }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription()
+      || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC_KEY) });
+    await store.savePushSubscription(sub);
+    toast('알림을 켰어요');
+  } catch (err) {
+    console.error(err);
+    toast('알림을 켜지 못했어요: ' + err.message);
+  }
+  await refreshPushState();
+}
+
+async function pushOff() {
+  pushState = 'busy'; render();
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (sub) { await store.removePushSubscription(sub.endpoint); await sub.unsubscribe(); }
+    toast('이 폰 알림을 껐어요');
+  } catch (err) {
+    toast('알림을 끄지 못했어요: ' + err.message);
+  }
+  await refreshPushState();
+}
+
 function renderAuth() {
   const s = store.status;
   let html;
@@ -514,9 +585,7 @@ function renderSettings() {
         const d = buildDigest(mine, n[me]);
         return `<div class="preview"><b>${esc(n[other()])}에게 갈 알림 미리보기</b>${esc(d.title)}\n${esc(d.body)}</div>`;
       })()}
-      <p class="muted" style="margin-bottom:0">${store.mode === 'local'
-        ? '⚠️ 실제 폰 알림은 두 폰 공유를 연결하고 인터넷에 올린 뒤에 켤 수 있어요.'
-        : ''}</p>
+      ${store.mode === 'cloud' ? pushBlock() : '<p class="muted" style="margin-bottom:0">⚠️ 실제 폰 알림은 두 폰 공유를 연결한 뒤에 켤 수 있어요.</p>'}
       <button class="btn block" data-act="open-news">최근 변경 기록 보기</button>
     </div>
 
@@ -797,6 +866,8 @@ document.addEventListener('click', async e => {
   else if (act === 'add-recurring') openTx({ mode: 'recurring' });
   else if (act === 'add-asset') openAsset();
   else if (act === 'open-news') openNews();
+  else if (act === 'push-on') pushOn();
+  else if (act === 'push-off') pushOff();
   else if (act === 'go-settings') { view = 'settings'; render(); window.scrollTo(0, 0); }
   else if (act === 'sign-out') { if (confirm('로그아웃할까요?')) await store.signOut(); }
   else if (act === 'create-household') {
@@ -852,6 +923,7 @@ const checkRecurring = () => {
   if (store.status !== 'ready' || recurringChecked) return;
   recurringChecked = true;
   applyRecurring().catch(err => console.error(err));
+  if (store.mode === 'cloud') refreshPushState().catch(console.error);
 };
 store.subscribe(() => { render(); checkRecurring(); });
 document.addEventListener('click', e => {

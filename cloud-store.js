@@ -228,6 +228,18 @@ export function createCloudStore() {
 
     addActivity: a => insert('activity', a),
 
+    // 이 폰의 푸시 알림 주소 저장 / 삭제
+    async savePushSubscription(sub) {
+      const json = sub.toJSON();
+      must(await sb.from('push_subscriptions').upsert(
+        { endpoint: json.endpoint, who: member.who, subscription: json },
+        { onConflict: 'endpoint' },
+      ));
+    },
+    async removePushSubscription(endpoint) {
+      must(await sb.from('push_subscriptions').delete().eq('endpoint', endpoint));
+    },
+
     // 고정 지출 자동 추가: 두 폰이 동시에 넣어도 한 번만 들어가게
     async addRecurringTx(t) {
       const { data: rows, error } = await sb.from('transactions')

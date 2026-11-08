@@ -1,4 +1,6 @@
 .claude/
+*.local.txt
+*.local.sql
 __pycache__/
 *.pyc
 Thumbs.db

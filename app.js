@@ -405,7 +405,7 @@ function renderAssets() {
         const sub = [`${mLabel} ${won(used)} 사용`, lastCharge ? `마지막 충전 ${Number(lastCharge.date.slice(5, 7))}/${Number(lastCharge.date.slice(8))}` : ''].filter(Boolean).join(' · ');
         return `<div class="prepaid-row">
           <span class="dot" style="--c:#8a5cc7">🎫</span>
-          <span class="tx-main"><b>${esc(p.name)}</b><small>${esc(sub)}</small></span>
+          <span class="tx-main" data-act="rename-pay" data-id="${esc(p.id)}" role="button" title="눌러서 이름 바꾸기"><b>${esc(p.name)} <span class="edit-hint">✏️</span></b><small>${esc(sub)}</small></span>
           <span class="tx-amt ${bal < 0 ? 'expense' : ''}">${fmt(bal)}원</span>
           <button class="btn small" data-act="charge" data-pay="${esc(p.id)}">충전</button>
           <button class="icon-btn" data-act="del-pay" data-id="${esc(p.id)}" aria-label="${esc(p.name)} 삭제">✕</button>
@@ -709,7 +709,7 @@ function renderSettings() {
       <h3>결제수단</h3>
       <p class="muted">🎫 표시는 충전해서 쓰는 상품권·선불카드예요. 잔액은 자산 탭에서 볼 수 있어요.</p>
       <div class="chips">${pays().map(p =>
-        `<span class="chip">${p.kind === 'prepaid' ? '🎫' : '💳'} ${esc(p.name)}<button class="x" data-act="del-pay" data-id="${esc(p.id)}" aria-label="${esc(p.name)} 삭제">×</button></span>`
+        `<span class="chip" data-act="rename-pay" data-id="${esc(p.id)}" role="button">${p.kind === 'prepaid' ? '🎫' : '💳'} ${esc(p.name)}<button class="x" data-act="del-pay" data-id="${esc(p.id)}" aria-label="${esc(p.name)} 삭제">×</button></span>`
       ).join('')}<button class="chip add" data-act="add-pay">+ 추가</button></div>
     </div>
 
@@ -1040,6 +1040,17 @@ document.addEventListener('click', async e => {
   else if (act === 'charge') openTx({ type: 'charge', paymentId: btn.dataset.pay });
   else if (act === 'add-prepaid') addPaymentMethod('prepaid');
   else if (act === 'add-pay') addPaymentMethod();
+  else if (act === 'rename-pay') {
+    const p = payById(btn.dataset.id);
+    if (!p) return;
+    const name = prompt('새 이름을 적어 주세요', p.name);
+    const clean = (name || '').trim().slice(0, 20);
+    if (!clean || clean === p.name) return;
+    if (pays().some(x => x.id !== p.id && x.name === clean)) return toast(`'${clean}'은(는) 이미 있어요`);
+    await store.updatePaymentMethod(p.id, { name: clean });
+    await log('update', 'payment', `${p.kind === 'prepaid' ? '🎫' : '💳'} 결제수단 이름 ${p.name} → ${clean}`);
+    toast('이름을 바꿨어요');
+  }
   else if (act === 'del-pay') {
     const p = payById(btn.dataset.id);
     if (!p) return;

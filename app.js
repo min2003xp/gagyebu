@@ -49,12 +49,22 @@ let budgetEditing = false;
 const D = () => store.data;
 const names = () => D().settings.names;
 const cats = type => D().categories.filter(c => c.type === type);
-const catById = id => D().categories.find(c => c.id === id) || { id, name: '삭제된 카테고리', emoji: '📦', type: 'expense' };
-const catColor = id => { const i = D().categories.findIndex(c => c.id === id); return i < 0 ? '#888888' : PALETTE[i % PALETTE.length]; };
+const catById = id => (id === '__charge__' ? { id, name: '상품권 충전', emoji: '🎫', type: 'expense' }
+  : D().categories.find(c => c.id === id) || { id, name: '삭제된 카테고리', emoji: '📦', type: 'expense' });
+const catColor = id => { if (id === '__charge__') return '#8a5cc7'; const i = D().categories.findIndex(c => c.id === id); return i < 0 ? '#888888' : PALETTE[i % PALETTE.length]; };
 const txOfMonth = key => D().transactions.filter(t => t.date.startsWith(key));
-// '통계에서 제외'한 내역과 충전(charge)은 지출·수입 합계에 넣지 않는다
-const sum = (list, type) => list.filter(t => t.type === type && !t.excluded).reduce((a, t) => a + t.amount, 0);
-const isSpend = t => t.type === 'expense' && !t.excluded;
+// 지출로 세는 규칙
+//  - 상품권 '충전'은 지출 (실제 낸 돈 기준)
+//  - 상품권으로 '사용'한 지출은 자동 제외 (충전 때 이미 셌으니까)
+//  - '통계에서 제외' 체크한 내역도 제외
+const isPrepaidUse = t => t.type === 'expense' && payById(t.paymentId)?.kind === 'prepaid';
+const isSpend = t => t.type === 'charge' || (t.type === 'expense' && !t.excluded && !isPrepaidUse(t));
+const spendAmount = t => (t.type === 'charge' ? (t.paidAmount || t.amount) : t.amount);
+const sum = (list, type) => type === 'expense'
+  ? list.filter(isSpend).reduce((a, t) => a + spendAmount(t), 0)
+  : list.filter(t => t.type === type && !t.excluded).reduce((a, t) => a + t.amount, 0);
+const CHARGE_CAT = '__charge__';   // 통계에서 충전을 묶어 보여줄 가짜 카테고리
+const spendCat = t => (t.type === 'charge' ? CHARGE_CAT : t.categoryId);
 
 /* ---------- 결제수단 ---------- */
 const pays = () => D().payment_methods || [];
@@ -176,21 +186,24 @@ function render() {
 
 function txRow(t) {
   if (t.type === 'charge') {
-    const paid = t.paidAmount && t.paidAmount !== t.amount ? `실제 ${won(t.paidAmount)} 결제` : '';
-    const sub = ['충전', names()[t.who], paid].filter(Boolean).map(esc).join(' · ');
+    // 충전 = 지출 (실제 낸 돈), 잔액은 충전 금액만큼 늘어남
+    const sub = ['충전', names()[t.who], `잔액 +${won(t.amount)}`].filter(Boolean).map(esc).join(' · ');
     return `<button class="tx" data-id="${esc(t.id)}">
       <span class="dot" style="--c:#8a5cc7">🎫</span>
       <span class="tx-main"><b>${esc(t.memo || payName(t.paymentId) + ' 충전')}</b><small>${sub}</small></span>
-      <span class="tx-amt charge">+${fmt(t.amount)}</span>
+      <span class="tx-amt expense">-${fmt(spendAmount(t))}</span>
     </button>`;
   }
   const c = catById(t.categoryId);
-  const sub = [c.name, payName(t.paymentId), names()[t.who], t.recurringKey ? '고정' : '', t.excluded ? '통계 제외' : '']
+  const prepaid = isPrepaidUse(t);
+  const tag = prepaid ? '상품권 사용(지출 제외)' : t.excluded ? '통계 제외' : '';
+  const sub = [c.name, payName(t.paymentId), names()[t.who], t.recurringKey ? '고정' : '', tag]
     .filter(Boolean).map(esc).join(' · ');
+  const cls = prepaid ? 'charge' : t.excluded ? 'excluded' : t.type;
   return `<button class="tx" data-id="${esc(t.id)}">
     <span class="dot" style="--c:${catColor(c.id)}">${esc(c.emoji)}</span>
     <span class="tx-main"><b>${esc(t.memo || c.name)}</b><small>${sub}</small></span>
-    <span class="tx-amt ${t.excluded ? 'excluded' : t.type}">${t.type === 'expense' ? '-' : '+'}${fmt(t.amount)}</span>
+    <span class="tx-amt ${cls}">${t.type === 'expense' ? '-' : '+'}${fmt(t.amount)}</span>
   </button>`;
 }
 
@@ -257,16 +270,16 @@ function renderStats() {
   }
 
   const byCat = new Map();
-  list.filter(isSpend).forEach(t => byCat.set(t.categoryId, (byCat.get(t.categoryId) || 0) + t.amount));
+  list.filter(isSpend).forEach(t => byCat.set(spendCat(t), (byCat.get(spendCat(t)) || 0) + spendAmount(t)));
 
   const byPay = new Map();
-  list.filter(isSpend).forEach(t => { const k = t.paymentId || ''; byPay.set(k, (byPay.get(k) || 0) + t.amount); });
+  list.filter(isSpend).forEach(t => { const k = t.paymentId || ''; byPay.set(k, (byPay.get(k) || 0) + spendAmount(t)); });
   const payRows = [...byPay].sort((a, b) => b[1] - a[1]);
   const payMax = payRows[0]?.[1] || 1;
   const catRows = [...byCat].sort((a, b) => b[1] - a[1]);
   const catMax = catRows[0]?.[1] || 1;
 
-  const byWho = WHO.map(w => [w, list.filter(t => isSpend(t) && t.who === w).reduce((a, t) => a + t.amount, 0)]);
+  const byWho = WHO.map(w => [w, list.filter(t => isSpend(t) && t.who === w).reduce((a, t) => a + spendAmount(t), 0)]);
   const whoMax = Math.max(1, ...byWho.map(x => x[1]));
 
   const months = Array.from({ length: 6 }, (_, i) => shiftMonth(current, i - 5)).map(k => [k, sum(txOfMonth(k), 'expense')]);
@@ -748,7 +761,9 @@ function renderForm() {
   $('#field-cat').hidden = charge;
   $('#field-paid').hidden = !charge;
   $('#field-pay').hidden = form.type === 'income';
-  $('#field-excluded').hidden = charge;
+  const prepaidUse = form.type === 'expense' && payById(form.paymentId)?.kind === 'prepaid';
+  $('#prepaid-hint').hidden = !prepaidUse;
+  $('#field-excluded').hidden = charge || prepaidUse;
 
   if (!charge) {
     const list = cats(form.type);
@@ -824,7 +839,8 @@ $('#tx-form').addEventListener('submit', async e => {
     type: form.type, amount, who: form.who, memo: $('#tx-memo').value.trim(),
     categoryId: charge ? null : form.categoryId,
     paymentId: form.type === 'income' ? null : form.paymentId,
-    excluded: charge ? false : $('#tx-excluded').checked,
+    // 상품권 사용은 규칙으로 자동 제외되므로 체크값은 저장하지 않는다
+    excluded: charge || (form.type === 'expense' && payById(form.paymentId)?.kind === 'prepaid') ? false : $('#tx-excluded').checked,
     paidAmount: charge && paid && paid !== amount ? paid : null,
   };
 

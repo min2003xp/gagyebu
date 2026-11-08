@@ -52,7 +52,7 @@
         <button type="button" data-type="income">수입</button>
         <button type="button" data-type="charge" id="seg-charge">충전</button>
       </div>
-      <p class="muted" id="charge-hint" hidden style="margin:-4px 0 0">상품권·선불카드에 돈을 넣은 기록이에요. 지출로 세지 않고, 잔액만 늘어나요.</p>
+      <p class="muted" id="charge-hint" hidden style="margin:-4px 0 0">상품권에 충전한 돈은 <b>지출</b>로 잡혀요 (실제 낸 돈 기준). 잔액은 충전 금액만큼 늘어나요.</p>
 
       <label class="amount-field">
         <input id="tx-amount" class="money" inputmode="numeric" autocomplete="off" placeholder="0">
@@ -67,6 +67,7 @@
       <div class="field" id="field-pay">
         <span class="field-label" id="pay-label">결제수단</span>
         <div id="tx-pays" class="chips"></div>
+        <small class="muted" id="prepaid-hint" hidden>🎫 상품권으로 쓴 돈은 충전할 때 이미 지출로 잡혀서, 여기서는 지출에서 자동으로 빠지고 잔액만 줄어요.</small>
       </div>
 
       <label class="field" id="field-paid" hidden>

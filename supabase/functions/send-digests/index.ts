@@ -1,5 +1,5 @@
 // Supabase Edge Function: send-digests
-// 5분마다 자동으로 실행되어, 마지막 변경 후 30분 동안 조용한 사람의 변경 내용을
+// 1분마다 자동으로 실행되어, 마지막 변경 후 5분 동안 조용한 사람의 변경 내용을
 // 한 번에 요약해서 상대방 폰으로 푸시 알림을 보낸다.
 //
 // 필요한 Secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, CRON_SECRET
@@ -9,7 +9,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
 
-const QUIET_MINUTES = Number(Deno.env.get('QUIET_MINUTES') ?? '30');
+// Supabase Secrets 의 QUIET_MINUTES 로 바꿀 수 있다 (없으면 5분)
+const QUIET_MINUTES = Number(Deno.env.get('QUIET_MINUTES') ?? '5');
 const ACTION_LABEL: Record<string, string> = { add: '추가', update: '수정', delete: '삭제' };
 
 type Activity = { id: string; household_id: string; author: string; action: string; summary: string; at: string };

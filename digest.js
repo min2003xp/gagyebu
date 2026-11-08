@@ -1,8 +1,8 @@
 // 변경 기록을 모아 알림 한 개짜리 요약으로 만든다.
 // 앱 안의 '새 소식'과, 나중에 서버에서 보낼 푸시 알림이 같은 규칙을 쓴다.
 
-// 마지막 변경 후 이만큼 조용하면 요약 알림을 보낸다 (사용자가 정한 값: 30분)
-export const QUIET_MINUTES = 30;
+// 마지막 변경 후 이만큼 조용하면 요약 알림을 보낸다 (사용자가 정한 값: 5분)
+export const QUIET_MINUTES = 5;
 
 export const ACTION_LABEL = { add: '추가', update: '수정', delete: '삭제' };
 

@@ -1,6 +1,6 @@
 // 서비스 워커: 홈 화면 앱 설치, 인터넷이 잠깐 끊겼을 때 화면 열기, 푸시 알림 받기
 
-const CACHE = 'gagyebu-v1';
+const CACHE = 'gagyebu-v2';
 const FILES = [
   './', 'index.html', 'style.css', 'app.js', 'store.js', 'cloud-store.js', 'digest.js', 'config.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
@@ -19,11 +19,12 @@ self.addEventListener('activate', e => {
 });
 
 // 앱 파일은 '인터넷 먼저, 안 되면 저장해 둔 것' → 업데이트가 바로 반영된다
+// (no-cache: 브라우저가 10분 동안 들고 있는 옛 파일 대신 서버에 새 버전이 있는지 꼭 확인)
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
         return res;

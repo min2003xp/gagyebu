@@ -38,6 +38,8 @@ function defaults() {
     // 변경 기록: { id, at(시각), by('a'|'b'), action('add'|'update'|'delete'), target, text, notifiedAt }
     // 상대방에게 보낼 요약 알림의 재료가 된다.
     activity: [],
+    // 결제수단: { id, name, kind('card'|'prepaid'), initialBalance }
+    payment_methods: [],
   };
 }
 
@@ -115,6 +117,21 @@ export function createStore() {
     },
     async deleteAsset(id) {
       data.assets = data.assets.filter(a => a.id !== id);
+      commit();
+    },
+
+    async addPaymentMethod(p) {
+      const item = { ...p, id: uid() };
+      data.payment_methods.push(item);
+      commit();
+      return item;
+    },
+    async updatePaymentMethod(id, patch) {
+      data.payment_methods = data.payment_methods.map(p => (p.id === id ? { ...p, ...patch } : p));
+      commit();
+    },
+    async deletePaymentMethod(id) {
+      data.payment_methods = data.payment_methods.filter(p => p.id !== id);
       commit();
     },
 

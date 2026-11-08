@@ -19,22 +19,29 @@ const map = {
     in: r => ({
       id: r.id, type: r.type, amount: Number(r.amount), date: r.date, categoryId: r.category_id,
       who: r.who, memo: r.memo, recurringKey: r.recurring_key, createdAt: Date.parse(r.created_at),
+      paymentId: r.payment_id, excluded: !!r.excluded, paidAmount: r.paid_amount == null ? null : Number(r.paid_amount),
     }),
     out: t => ({
       type: t.type, amount: t.amount, date: t.date, category_id: t.categoryId ?? null,
       who: t.who, memo: t.memo ?? '', recurring_key: t.recurringKey ?? null,
+      payment_id: t.paymentId ?? null, excluded: !!t.excluded, paid_amount: t.paidAmount ?? null,
     }),
     order: 'date',
   },
   recurring: {
     in: r => ({
       id: r.id, type: r.type, amount: Number(r.amount), categoryId: r.category_id, who: r.who, memo: r.memo,
-      day: r.day, startMonth: r.start_month, lastApplied: r.last_applied,
+      day: r.day, startMonth: r.start_month, lastApplied: r.last_applied, paymentId: r.payment_id,
     }),
     out: r => ({
       type: r.type, amount: r.amount, category_id: r.categoryId ?? null, who: r.who, memo: r.memo ?? '',
-      day: r.day, start_month: r.startMonth, last_applied: r.lastApplied ?? null,
+      day: r.day, start_month: r.startMonth, last_applied: r.lastApplied ?? null, payment_id: r.paymentId ?? null,
     }),
+    order: 'created_at',
+  },
+  payment_methods: {
+    in: r => ({ id: r.id, name: r.name, kind: r.kind, initialBalance: Number(r.initial_balance) }),
+    out: p => ({ name: p.name, kind: p.kind, initial_balance: p.initialBalance ?? 0 }),
     order: 'created_at',
   },
   assets: {
@@ -54,6 +61,7 @@ const map = {
 // 일부 필드만 바꿀 때 (patch) 쓰는 이름 변환
 const PATCH_NAMES = {
   categoryId: 'category_id', recurringKey: 'recurring_key', startMonth: 'start_month', lastApplied: 'last_applied',
+  paymentId: 'payment_id', paidAmount: 'paid_amount', initialBalance: 'initial_balance',
 };
 const patchOut = p => Object.fromEntries(Object.entries(p).map(([k, v]) => [PATCH_NAMES[k] || k, v]));
 
@@ -75,7 +83,7 @@ async function fetchAll(table) {
 }
 
 export function createCloudStore() {
-  let data = { settings: { names: { a: '나', b: '아내' } }, categories: [], transactions: [], budgets: {}, recurring: [], assets: [], activity: [] };
+  let data = { settings: { names: { a: '나', b: '아내' } }, categories: [], transactions: [], budgets: {}, recurring: [], assets: [], activity: [], payment_methods: [] };
   let session = null;
   let member = null;     // { household_id, who }
   let household = null;  // { id, invite_code, names, budgets }
@@ -227,6 +235,10 @@ export function createCloudStore() {
     deleteAsset: id => remove('assets', id),
 
     addActivity: a => insert('activity', a),
+
+    addPaymentMethod: p => insert('payment_methods', p),
+    updatePaymentMethod: (id, patch) => update('payment_methods', id, patch),
+    deletePaymentMethod: id => remove('payment_methods', id),
 
     // 이 폰의 푸시 알림 주소 저장 / 삭제
     async savePushSubscription(sub) {

@@ -38,7 +38,9 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
 /* ---------- 상태 ---------- */
 // 연결 정보가 있으면 두 폰 공유 저장소, 없으면 이 기기 전용 저장소
-const store = SUPABASE_URL ? (await import('./cloud-store.js')).createCloudStore() : createStore();
+// (주소 끝에 ?local 을 붙이면 이 기기 전용으로 열린다: 테스트용)
+const useCloud = SUPABASE_URL && !new URLSearchParams(location.search).has('local');
+const store = useCloud ? (await import('./cloud-store.js')).createCloudStore() : createStore();
 let current = monthKey(new Date());   // 보고 있는 달
 let view = 'list';                    // 보고 있는 탭
 let me = lsGet('gagyebu-me', 'a');    // 이 폰의 주인 (폰마다 따로 저장)
@@ -50,7 +52,30 @@ const cats = type => D().categories.filter(c => c.type === type);
 const catById = id => D().categories.find(c => c.id === id) || { id, name: '삭제된 카테고리', emoji: '📦', type: 'expense' };
 const catColor = id => { const i = D().categories.findIndex(c => c.id === id); return i < 0 ? '#888888' : PALETTE[i % PALETTE.length]; };
 const txOfMonth = key => D().transactions.filter(t => t.date.startsWith(key));
-const sum = (list, type) => list.filter(t => t.type === type).reduce((a, t) => a + t.amount, 0);
+// '통계에서 제외'한 내역과 충전(charge)은 지출·수입 합계에 넣지 않는다
+const sum = (list, type) => list.filter(t => t.type === type && !t.excluded).reduce((a, t) => a + t.amount, 0);
+const isSpend = t => t.type === 'expense' && !t.excluded;
+
+/* ---------- 결제수단 ---------- */
+const pays = () => D().payment_methods || [];
+const payById = id => pays().find(p => p.id === id);
+const payName = id => (id ? payById(id)?.name || '삭제된 결제수단' : '');
+// 충전식 잔액 = 처음 잔액 + 충전 − 그 수단으로 쓴 돈 (date 까지)
+function prepaidBalance(p, until = '9999-12-31') {
+  let bal = p.initialBalance || 0;
+  for (const t of D().transactions) {
+    if (t.paymentId !== p.id || t.date > until) continue;
+    if (t.type === 'charge') bal += t.amount;
+    else if (t.type === 'expense') bal -= t.amount;
+  }
+  return bal;
+}
+// 자주 쓴 결제수단이 앞에 오도록
+function paysByUse(kind) {
+  const count = new Map();
+  D().transactions.forEach(t => t.paymentId && count.set(t.paymentId, (count.get(t.paymentId) || 0) + 1));
+  return pays().filter(p => !kind || p.kind === kind).sort((a, b) => (count.get(b.id) || 0) - (count.get(a.id) || 0));
+}
 
 // 그 달 기준 금액: 그 달에 입력한 값이 없으면 가장 최근에 입력한 값을 쓴다
 function balanceAt(asset, key) {
@@ -66,14 +91,24 @@ function netWorth(key) {
     known = true;
     if (a.kind === 'debt') debts += b.value; else assets += b.value;
   }
+  // 상품권 잔액도 자산 (그 달 말일 기준)
+  const end = `${key}-31`;
+  for (const p of pays()) {
+    if (p.kind !== 'prepaid') continue;
+    const bal = prepaidBalance(p, end);
+    assets += bal;
+    if (bal) known = true;
+  }
   return { assets, debts, net: assets - debts, known };
 }
 const ownerName = o => (o === 'both' ? '공동' : names()[o] || '');
 
 /* ---------- 변경 기록 (알림 재료) ---------- */
 const txText = t => {
+  if (t.type === 'charge') return `🎫 ${payName(t.paymentId)} 충전 +${won(t.amount)}`;
   const c = catById(t.categoryId);
-  return `${c.emoji} ${t.memo || c.name} ${t.type === 'expense' ? '-' : '+'}${won(t.amount)}`;
+  const pay = t.paymentId ? ` (${payName(t.paymentId)})` : '';
+  return `${c.emoji} ${t.memo || c.name} ${t.type === 'expense' ? '-' : '+'}${won(t.amount)}${pay}`;
 };
 const log = (action, target, text) => store.addActivity({ at: Date.now(), by: me, action, target, text });
 const other = () => (me === 'a' ? 'b' : 'a');
@@ -108,7 +143,7 @@ async function applyRecurring() {
         if (date > now) break;
         await store.addRecurringTx({
           type: r.type, amount: r.amount, categoryId: r.categoryId, memo: r.memo, who: r.who,
-          date, recurringKey: `${r.id}:${key}`,
+          paymentId: r.paymentId ?? null, date, recurringKey: `${r.id}:${key}`,
         });
         last = key;
         key = shiftMonth(key, 1);
@@ -140,12 +175,22 @@ function render() {
 }
 
 function txRow(t) {
+  if (t.type === 'charge') {
+    const paid = t.paidAmount && t.paidAmount !== t.amount ? `실제 ${won(t.paidAmount)} 결제` : '';
+    const sub = ['충전', names()[t.who], paid].filter(Boolean).map(esc).join(' · ');
+    return `<button class="tx" data-id="${esc(t.id)}">
+      <span class="dot" style="--c:#8a5cc7">🎫</span>
+      <span class="tx-main"><b>${esc(t.memo || payName(t.paymentId) + ' 충전')}</b><small>${sub}</small></span>
+      <span class="tx-amt charge">+${fmt(t.amount)}</span>
+    </button>`;
+  }
   const c = catById(t.categoryId);
-  const sub = [c.name, names()[t.who], t.recurringKey ? '고정' : ''].filter(Boolean).map(esc).join(' · ');
+  const sub = [c.name, payName(t.paymentId), names()[t.who], t.recurringKey ? '고정' : '', t.excluded ? '통계 제외' : '']
+    .filter(Boolean).map(esc).join(' · ');
   return `<button class="tx" data-id="${esc(t.id)}">
     <span class="dot" style="--c:${catColor(c.id)}">${esc(c.emoji)}</span>
     <span class="tx-main"><b>${esc(t.memo || c.name)}</b><small>${sub}</small></span>
-    <span class="tx-amt ${t.type}">${t.type === 'expense' ? '-' : '+'}${fmt(t.amount)}</span>
+    <span class="tx-amt ${t.excluded ? 'excluded' : t.type}">${t.type === 'expense' ? '-' : '+'}${fmt(t.amount)}</span>
   </button>`;
 }
 
@@ -212,11 +257,16 @@ function renderStats() {
   }
 
   const byCat = new Map();
-  list.filter(t => t.type === 'expense').forEach(t => byCat.set(t.categoryId, (byCat.get(t.categoryId) || 0) + t.amount));
+  list.filter(isSpend).forEach(t => byCat.set(t.categoryId, (byCat.get(t.categoryId) || 0) + t.amount));
+
+  const byPay = new Map();
+  list.filter(isSpend).forEach(t => { const k = t.paymentId || ''; byPay.set(k, (byPay.get(k) || 0) + t.amount); });
+  const payRows = [...byPay].sort((a, b) => b[1] - a[1]);
+  const payMax = payRows[0]?.[1] || 1;
   const catRows = [...byCat].sort((a, b) => b[1] - a[1]);
   const catMax = catRows[0]?.[1] || 1;
 
-  const byWho = WHO.map(w => [w, list.filter(t => t.type === 'expense' && t.who === w).reduce((a, t) => a + t.amount, 0)]);
+  const byWho = WHO.map(w => [w, list.filter(t => isSpend(t) && t.who === w).reduce((a, t) => a + t.amount, 0)]);
   const whoMax = Math.max(1, ...byWho.map(x => x[1]));
 
   const months = Array.from({ length: 6 }, (_, i) => shiftMonth(current, i - 5)).map(k => [k, sum(txOfMonth(k), 'expense')]);
@@ -236,6 +286,12 @@ function renderStats() {
         return barRow(`${esc(c.emoji)} ${esc(c.name)}`, won(v), v / catMax, catColor(id), `${Math.round(v / exp * 100)}%`);
       }).join('') : '<p class="muted">아직 지출 내역이 없어요.</p>'}
     </div>
+
+    ${payRows.length ? `<div class="card pad">
+      <h3>결제수단별 지출</h3>
+      ${payRows.map(([id, v], i) => barRow(id ? `${payById(id)?.kind === 'prepaid' ? '🎫' : '💳'} ${esc(payName(id))}` : '❔ 선택 안 함',
+        won(v), v / payMax, PALETTE[(i + 2) % PALETTE.length], `${Math.round(v / exp * 100)}%`)).join('')}
+    </div>` : ''}
 
     <div class="card pad">
       <h3>누가 썼나요</h3>
@@ -303,7 +359,7 @@ function renderBudget() {
   if (withBudget.length) {
     html += `<div class="card pad"><h3>카테고리별 예산</h3>
       ${withBudget.map(c => {
-        const used = list.filter(t => t.type === 'expense' && t.categoryId === c.id).reduce((a, t) => a + t.amount, 0);
+        const used = list.filter(t => isSpend(t) && t.categoryId === c.id).reduce((a, t) => a + t.amount, 0);
         const r = used / b[c.id];
         const left = b[c.id] - used;
         const meta = `<div class="budget-meta"><span>${won(used)} 사용 · ${Math.round(r * 100)}%</span><span class="${left < 0 ? 'expense' : ''}">${left >= 0 ? `${won(left)} 남음` : `${won(-left)} 초과`}</span></div>`;
@@ -323,13 +379,33 @@ function renderAssets() {
   const el = $('#view-assets');
   const list = D().assets;
   const mLabel = `${Number(current.slice(5))}월`;
+  const monthEnd = `${current}-31`;
 
-  if (!list.length) {
+  // 상품권·선불카드 잔액 (충전 − 사용, 자동 계산)
+  const prepaids = pays().filter(p => p.kind === 'prepaid').map(p => ({ p, bal: prepaidBalance(p, monthEnd) }));
+  const prepaidTotal = prepaids.reduce((s, x) => s + x.bal, 0);
+  const prepaidHtml = `
+    ${prepaids.length ? `<div class="day-head"><span>🎫 상품권·선불 잔액</span><span>${won(prepaidTotal)}</span></div>
+      <div class="card">${prepaids.map(({ p, bal }) => {
+        const lastCharge = D().transactions.filter(t => t.type === 'charge' && t.paymentId === p.id).sort((a, b) => b.date.localeCompare(a.date))[0];
+        const used = txOfMonth(current).filter(t => t.type === 'expense' && t.paymentId === p.id).reduce((s, t) => s + t.amount, 0);
+        const sub = [`${mLabel} ${won(used)} 사용`, lastCharge ? `마지막 충전 ${Number(lastCharge.date.slice(5, 7))}/${Number(lastCharge.date.slice(8))}` : ''].filter(Boolean).join(' · ');
+        return `<div class="prepaid-row">
+          <span class="dot" style="--c:#8a5cc7">🎫</span>
+          <span class="tx-main"><b>${esc(p.name)}</b><small>${esc(sub)}</small></span>
+          <span class="tx-amt ${bal < 0 ? 'expense' : ''}">${fmt(bal)}원</span>
+          <button class="btn small" data-act="charge" data-pay="${esc(p.id)}">충전</button>
+        </div>`;
+      }).join('')}</div>` : ''}
+    <button class="btn block" data-act="add-prepaid" style="margin:0 0 14px">+ 상품권·선불카드 추가</button>`;
+
+  if (!list.length && !prepaids.length) {
     el.innerHTML = `<div class="empty">
         <p>아직 등록한 자산이 없어요.</p>
         <p>통장, 적금, 주식, 보증금, 대출 등을 등록하면<br>우리 집 총 재산을 한눈에 볼 수 있어요.</p>
       </div>
-      <button class="btn primary block" data-act="add-asset">+ 자산 추가</button>`;
+      <button class="btn primary block" data-act="add-asset" style="margin-bottom:8px">+ 자산 추가</button>
+      ${prepaidHtml}`;
     return;
   }
 
@@ -345,11 +421,13 @@ function renderAssets() {
   }
 
   // 종류별 (부채 제외)
-  const byKind = KINDS.filter(k => k[0] !== 'debt').map(([k, emoji, label]) => {
+  let byKind = KINDS.filter(k => k[0] !== 'debt').map(([k, emoji, label]) => {
     const v = list.filter(a => a.kind === k).reduce((s, a) => s + (balanceAt(a, current)?.value || 0), 0);
     return { k, emoji, label, v };
-  }).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
-  const kindColor = k => PALETTE[KINDS.findIndex(x => x[0] === k) % PALETTE.length];
+  });
+  byKind.push({ k: 'prepaid', emoji: '🎫', label: '상품권·선불', v: prepaidTotal });
+  byKind = byKind.filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  const kindColor = k => (k === 'prepaid' ? '#8a5cc7' : PALETTE[KINDS.findIndex(x => x[0] === k) % PALETTE.length]);
 
   // 누구 것 (순자산)
   const byOwner = ['a', 'b', 'both'].map(o => [o, list.filter(a => a.owner === o).reduce((s, a) => {
@@ -389,19 +467,20 @@ function renderAssets() {
       ${stale.length ? `<div class="tip">${stale.length}개 항목에 ${mLabel} 금액이 아직 없어요. 아래 목록에서 눌러서 업데이트해 주세요.</div>` : ''}
     </div>
 
-    ${assetList.length ? `<div class="day-head"><span>자산</span><span>${won(now.assets)}</span></div>
+    ${assetList.length ? `<div class="day-head"><span>자산</span><span>${won(now.assets - prepaidTotal)}</span></div>
       <div class="card">${assetList.map(row).join('')}</div>` : ''}
     ${debtList.length ? `<div class="day-head"><span>대출·부채</span><span>-${won(now.debts)}</span></div>
       <div class="card">${debtList.map(row).join('')}</div>` : ''}
     <button class="btn primary block" data-act="add-asset" style="margin-bottom:14px">+ 자산 추가</button>
+    ${prepaidHtml}
 
     ${byKind.length ? `<div class="card pad"><h3>종류별 자산</h3>
       ${byKind.map(x => barRow(`${x.emoji} ${esc(x.label)}`, won(x.v), x.v / byKind[0].v, kindColor(x.k), `${Math.round(x.v / now.assets * 100)}%`)).join('')}
     </div>` : ''}
 
-    <div class="card pad"><h3>누구 재산인가요</h3>
-      ${byOwner.map(([o, v], i) => barRow(esc(ownerName(o)), `${v < 0 ? '-' : ''}${won(Math.abs(v))}`, Math.abs(v) / ownerMax, ['#3f6fd0', '#c4487f', '#2f7d6d'][['a', 'b', 'both'].indexOf(o)], '', v < 0 ? 'over' : '')).join('')}
-    </div>
+    ${byOwner.length ? `<div class="card pad"><h3>누구 재산인가요</h3>
+      ${byOwner.map(([o, v]) => barRow(esc(ownerName(o)), `${v < 0 ? '-' : ''}${won(Math.abs(v))}`, Math.abs(v) / ownerMax, ['#3f6fd0', '#c4487f', '#2f7d6d'][['a', 'b', 'both'].indexOf(o)], '', v < 0 ? 'over' : '')).join('')}
+    </div>` : ''}
 
     <div class="card pad">
       <h3>최근 6개월 총 재산</h3>
@@ -613,6 +692,14 @@ function renderSettings() {
     </div>
 
     <div class="card pad">
+      <h3>결제수단</h3>
+      <p class="muted">🎫 표시는 충전해서 쓰는 상품권·선불카드예요. 잔액은 자산 탭에서 볼 수 있어요.</p>
+      <div class="chips">${pays().map(p =>
+        `<span class="chip">${p.kind === 'prepaid' ? '🎫' : '💳'} ${esc(p.name)}<button class="x" data-act="del-pay" data-id="${esc(p.id)}" aria-label="${esc(p.name)} 삭제">×</button></span>`
+      ).join('')}<button class="chip add" data-act="add-pay">+ 추가</button></div>
+    </div>
+
+    <div class="card pad">
       <h3>카테고리</h3>
       <h4>지출</h4><div class="chips">${chips('expense')}</div>
       <h4>수입</h4><div class="chips">${chips('income')}</div>
@@ -633,11 +720,17 @@ let form = null;
 
 $('#tx-day').innerHTML = Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}일</option>`).join('');
 
-function openTx({ mode = 'tx', tx = null } = {}) {
-  form = { mode, id: tx?.id || null, type: tx?.type || 'expense', categoryId: tx?.categoryId || null, who: tx?.who || me };
+function openTx({ mode = 'tx', tx = null, type = null, paymentId = null } = {}) {
+  form = {
+    mode, id: tx?.id || null, type: tx?.type || type || 'expense', categoryId: tx?.categoryId || null, who: tx?.who || me,
+    paymentId: tx?.paymentId || paymentId || null,
+  };
   $('#tx-title').textContent = mode === 'recurring' ? '고정 지출·수입 추가' : tx ? '내역 수정' : '내역 추가';
   $('#tx-amount').value = tx ? fmt(tx.amount) : '';
   $('#tx-memo').value = tx?.memo || '';
+  $('#tx-paid').value = tx?.paidAmount ? fmt(tx.paidAmount) : '';
+  $('#tx-excluded').checked = !!tx?.excluded;
+  $('#seg-charge').hidden = mode === 'recurring';
   $('#tx-date').value = tx?.date || (current === monthKey(new Date()) ? todayStr() : `${current}-01`);
   $('#tx-day').value = String(new Date().getDate());
   $('#field-date').hidden = mode === 'recurring';
@@ -649,12 +742,30 @@ function openTx({ mode = 'tx', tx = null } = {}) {
 }
 
 function renderForm() {
+  const charge = form.type === 'charge';
   $$('#tx-type button').forEach(b => b.classList.toggle('active', b.dataset.type === form.type));
-  const list = cats(form.type);
-  if (!list.some(c => c.id === form.categoryId)) form.categoryId = list[0]?.id || null;
-  $('#tx-cats').innerHTML = list.map(c =>
-    `<button type="button" class="chip ${c.id === form.categoryId ? 'active' : ''}" data-cat="${esc(c.id)}">${esc(c.emoji)} ${esc(c.name)}</button>`
-  ).join('');
+  $('#charge-hint').hidden = !charge;
+  $('#field-cat').hidden = charge;
+  $('#field-paid').hidden = !charge;
+  $('#field-pay').hidden = form.type === 'income';
+  $('#field-excluded').hidden = charge;
+
+  if (!charge) {
+    const list = cats(form.type);
+    if (!list.some(c => c.id === form.categoryId)) form.categoryId = list[0]?.id || null;
+    $('#tx-cats').innerHTML = list.map(c =>
+      `<button type="button" class="chip ${c.id === form.categoryId ? 'active' : ''}" data-cat="${esc(c.id)}">${esc(c.emoji)} ${esc(c.name)}</button>`
+    ).join('');
+  }
+
+  // 결제수단: 충전일 땐 충전식만, 지출일 땐 전부 (자주 쓴 순서)
+  const payList = paysByUse(charge ? 'prepaid' : null);
+  if (charge && !payList.some(p => p.id === form.paymentId)) form.paymentId = payList[0]?.id || null;
+  $('#pay-label').textContent = charge ? '어디에 충전했나요?' : '결제수단 (다시 누르면 선택 해제)';
+  $('#tx-pays').innerHTML = payList.map(p => {
+    const bal = p.kind === 'prepaid' ? ` <span class="bal">${fmt(prepaidBalance(p))}원</span>` : '';
+    return `<button type="button" class="chip ${p.id === form.paymentId ? 'active' : ''}" data-pay="${esc(p.id)}">${p.kind === 'prepaid' ? '🎫' : '💳'} ${esc(p.name)}${bal}</button>`;
+  }).join('') + `<button type="button" class="chip add" data-addpay="${charge ? 'prepaid' : ''}">+ ${charge ? '상품권 추가' : '새 결제수단'}</button>`;
   $('#tx-who').innerHTML = WHO.map(w => `<button type="button" data-who="${w}" class="${form.who === w ? 'active' : ''}">${esc(names()[w])}</button>`).join('');
 }
 
@@ -666,18 +777,61 @@ dlg.addEventListener('click', e => {
   if (t.dataset.type) { form.type = t.dataset.type; renderForm(); }
   else if (t.dataset.cat) { form.categoryId = t.dataset.cat; renderForm(); }
   else if (t.dataset.who) { form.who = t.dataset.who; renderForm(); }
+  else if (t.dataset.pay) {
+    // 지출일 땐 다시 누르면 선택 해제
+    form.paymentId = form.paymentId === t.dataset.pay && form.type !== 'charge' ? null : t.dataset.pay;
+    renderForm();
+  }
+  else if (t.hasAttribute('data-addpay')) {
+    addPaymentMethod(t.dataset.addpay || null).then(p => { if (p) { form.paymentId = p.id; renderForm(); } });
+  }
 });
+
+// 새 결제수단 등록 (kind 를 정해서 부르면 묻지 않는다)
+async function addPaymentMethod(kind = null) {
+  const name = prompt(kind === 'prepaid'
+    ? '상품권·선불카드 이름을 입력하세요.\n(예: 성남사랑상품권, 온누리상품권)'
+    : '결제수단 이름을 입력하세요.\n(예: 현대카드, 하나카드, 현금, 성남사랑상품권)');
+  if (!name || !name.trim()) return null;
+  const clean = name.trim().slice(0, 20);
+  if (pays().some(p => p.name === clean)) { toast('이미 있는 이름이에요'); return pays().find(p => p.name === clean); }
+  const k = kind || (confirm(`'${clean}'은(는) 충전해서 쓰는 상품권·선불카드인가요?\n\n확인 = 충전식 (잔액 관리)\n취소 = 일반 카드·현금`) ? 'prepaid' : 'card');
+  let initialBalance = 0;
+  if (k === 'prepaid') {
+    const v = prompt(`'${clean}'에 지금 남아 있는 잔액이 있으면 입력하세요.\n(없으면 0, 앞으로 '충전'으로 기록하면 돼요)`, '0');
+    initialBalance = Number(String(v || '0').replace(/\D/g, '')) || 0;
+  }
+  try {
+    const p = await store.addPaymentMethod({ name: clean, kind: k, initialBalance });
+    await log('add', 'payment', `${k === 'prepaid' ? '🎫' : '💳'} 결제수단 ${clean}${initialBalance ? ` (잔액 ${won(initialBalance)})` : ''}`);
+    toast('결제수단을 추가했어요');
+    return p;
+  } catch (err) {
+    toast('추가하지 못했어요: ' + err.message);
+    return null;
+  }
+}
 
 $('#tx-form').addEventListener('submit', async e => {
   e.preventDefault();
   const amount = Number($('#tx-amount').value.replace(/\D/g, ''));
   if (!amount) return toast('금액을 입력해 주세요');
-  if (!form.categoryId) return toast('카테고리를 골라 주세요');
-  const base = { type: form.type, amount, categoryId: form.categoryId, who: form.who, memo: $('#tx-memo').value.trim() };
+  const charge = form.type === 'charge';
+  if (charge && !form.paymentId) return toast('충전한 상품권을 골라 주세요');
+  if (!charge && !form.categoryId) return toast('카테고리를 골라 주세요');
+  const paid = Number($('#tx-paid').value.replace(/\D/g, ''));
+  const base = {
+    type: form.type, amount, who: form.who, memo: $('#tx-memo').value.trim(),
+    categoryId: charge ? null : form.categoryId,
+    paymentId: form.type === 'income' ? null : form.paymentId,
+    excluded: charge ? false : $('#tx-excluded').checked,
+    paidAmount: charge && paid && paid !== amount ? paid : null,
+  };
 
   try {
     if (form.mode === 'recurring') {
-      await store.addRecurring({ ...base, day: Number($('#tx-day').value), startMonth: monthKey(new Date()), lastApplied: null });
+      const { type, amount: amt, who, memo, categoryId, paymentId } = base;
+      await store.addRecurring({ type, amount: amt, who, memo, categoryId, paymentId, day: Number($('#tx-day').value), startMonth: monthKey(new Date()), lastApplied: null });
       await log('add', 'recurring', `고정 항목 ${txText(base)} (매달 ${$('#tx-day').value}일)`);
       await applyRecurring();
       toast('고정 항목을 등록했어요');
@@ -866,6 +1020,16 @@ document.addEventListener('click', async e => {
   else if (act === 'add-recurring') openTx({ mode: 'recurring' });
   else if (act === 'add-asset') openAsset();
   else if (act === 'open-news') openNews();
+  else if (act === 'charge') openTx({ type: 'charge', paymentId: btn.dataset.pay });
+  else if (act === 'add-prepaid') addPaymentMethod('prepaid');
+  else if (act === 'add-pay') addPaymentMethod();
+  else if (act === 'del-pay') {
+    const p = payById(btn.dataset.id);
+    if (p && confirm(`'${p.name}' 결제수단을 삭제할까요?\n이미 적은 내역은 지워지지 않아요.`)) {
+      await store.deletePaymentMethod(p.id);
+      await log('delete', 'payment', `결제수단 ${p.name}`);
+    }
+  }
   else if (act === 'push-on') pushOn();
   else if (act === 'push-off') pushOff();
   else if (act === 'go-settings') { view = 'settings'; render(); window.scrollTo(0, 0); }
@@ -905,9 +1069,11 @@ document.addEventListener('click', async e => {
 
 function exportCsv() {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['날짜', '구분', '카테고리', '금액', '누가', '메모']];
+  const rows = [['날짜', '구분', '카테고리', '금액', '결제수단', '누가', '메모', '통계 제외']];
+  const TYPE = { expense: '지출', income: '수입', charge: '충전' };
   [...D().transactions].sort((a, b) => a.date.localeCompare(b.date)).forEach(t => {
-    rows.push([t.date, t.type === 'expense' ? '지출' : '수입', catById(t.categoryId).name, t.amount, names()[t.who], t.memo]);
+    rows.push([t.date, TYPE[t.type], t.type === 'charge' ? '' : catById(t.categoryId).name, t.amount,
+      payName(t.paymentId), names()[t.who], t.memo, t.excluded ? 'O' : '']);
   });
   const csv = '﻿' + rows.map(r => r.map(q).join(',')).join('\r\n');
   const a = document.createElement('a');

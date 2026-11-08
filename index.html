@@ -50,17 +50,29 @@
       <div class="seg" id="tx-type">
         <button type="button" data-type="expense">지출</button>
         <button type="button" data-type="income">수입</button>
+        <button type="button" data-type="charge" id="seg-charge">충전</button>
       </div>
+      <p class="muted" id="charge-hint" hidden style="margin:-4px 0 0">상품권·선불카드에 돈을 넣은 기록이에요. 지출로 세지 않고, 잔액만 늘어나요.</p>
 
       <label class="amount-field">
         <input id="tx-amount" class="money" inputmode="numeric" autocomplete="off" placeholder="0">
         <b>원</b>
       </label>
 
-      <div class="field">
+      <div class="field" id="field-cat">
         <span class="field-label">카테고리</span>
         <div id="tx-cats" class="chips"></div>
       </div>
+
+      <div class="field" id="field-pay">
+        <span class="field-label" id="pay-label">결제수단</span>
+        <div id="tx-pays" class="chips"></div>
+      </div>
+
+      <label class="field" id="field-paid" hidden>
+        <span class="field-label">실제 낸 돈 (할인 충전일 때만)</span>
+        <input id="tx-paid" class="money" inputmode="numeric" autocomplete="off" placeholder="충전 금액과 같으면 비워두세요">
+      </label>
 
       <label class="field" id="field-date">
         <span class="field-label">날짜</span>
@@ -81,6 +93,11 @@
       <label class="field">
         <span class="field-label">메모</span>
         <input id="tx-memo" maxlength="40" placeholder="예: 마트 장보기">
+      </label>
+
+      <label class="check" id="field-excluded">
+        <input type="checkbox" id="tx-excluded">
+        <span><b>지출·통계에서 제외</b><small>이체, 카드값 납부처럼 실제 소비가 아닌 돈</small></span>
       </label>
 
       <div class="sheet-actions">

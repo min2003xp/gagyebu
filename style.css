@@ -269,6 +269,15 @@ input:not([type]), input[type="date"], input[type="email"], input[type="password
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field-label { font-size: 13px; color: var(--muted); font-weight: 600; }
 .sheet-actions { display: flex; gap: 8px; }
+.check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.check input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+.check span { display: flex; flex-direction: column; font-size: 15px; }
+.check small { color: var(--muted); font-size: 13px; }
+.chip .bal { color: inherit; opacity: .7; font-size: 12px; }
+.tx-amt.charge, .tx-amt.excluded { color: var(--muted); font-weight: 600; }
+.tx-amt.excluded { text-decoration: line-through; }
+.prepaid-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.prepaid-row + .prepaid-row { border-top: 1px solid var(--line); }
 .sheet-actions .primary { flex: 1; }
 
 .toast {

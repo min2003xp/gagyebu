@@ -408,6 +408,7 @@ function renderAssets() {
           <span class="tx-main"><b>${esc(p.name)}</b><small>${esc(sub)}</small></span>
           <span class="tx-amt ${bal < 0 ? 'expense' : ''}">${fmt(bal)}원</span>
           <button class="btn small" data-act="charge" data-pay="${esc(p.id)}">충전</button>
+          <button class="icon-btn" data-act="del-pay" data-id="${esc(p.id)}" aria-label="${esc(p.name)} 삭제">✕</button>
         </div>`;
       }).join('')}</div>` : ''}
     <button class="btn block" data-act="add-prepaid" style="margin:0 0 14px">+ 상품권·선불카드 추가</button>`;
@@ -1041,10 +1042,20 @@ document.addEventListener('click', async e => {
   else if (act === 'add-pay') addPaymentMethod();
   else if (act === 'del-pay') {
     const p = payById(btn.dataset.id);
-    if (p && confirm(`'${p.name}' 결제수단을 삭제할까요?\n이미 적은 내역은 지워지지 않아요.`)) {
-      await store.deletePaymentMethod(p.id);
-      await log('delete', 'payment', `결제수단 ${p.name}`);
-    }
+    if (!p) return;
+    const prepaid = p.kind === 'prepaid';
+    const related = D().transactions.filter(t => t.paymentId === p.id);
+    const msg = prepaid
+      ? `'${p.name}'을(를) 삭제할까요?\n잔액 ${won(prepaidBalance(p))}도 자산에서 사라져요.`
+      : `'${p.name}' 결제수단을 삭제할까요?\n이미 적은 내역은 지워지지 않아요.`;
+    if (!confirm(msg)) return;
+    // 상품권은 충전·사용 내역까지 지울지 한 번 더 묻는다
+    const dropTx = prepaid && related.length &&
+      confirm(`이 상품권으로 적은 충전·사용 내역 ${related.length}건도 같이 지울까요?\n\n확인 = 내역도 삭제\n취소 = 내역은 남기기`);
+    if (dropTx) for (const t of related) await store.deleteTx(t.id);
+    await store.deletePaymentMethod(p.id);
+    await log('delete', 'payment', `${prepaid ? '🎫' : '💳'} 결제수단 ${p.name}${dropTx ? ` (내역 ${related.length}건 포함)` : ''}`);
+    toast(`'${p.name}'을(를) 삭제했어요`);
   }
   else if (act === 'push-on') pushOn();
   else if (act === 'push-off') pushOff();

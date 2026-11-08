@@ -812,15 +812,25 @@ async function addPaymentMethod(kind = null) {
   const clean = name.trim().slice(0, 20);
   if (pays().some(p => p.name === clean)) { toast('이미 있는 이름이에요'); return pays().find(p => p.name === clean); }
   const k = kind || (confirm(`'${clean}'은(는) 충전해서 쓰는 상품권·선불카드인가요?\n\n확인 = 충전식 (잔액 관리)\n취소 = 일반 카드·현금`) ? 'prepaid' : 'card');
-  let initialBalance = 0;
+  const num = v => Number(String(v || '0').replace(/\D/g, '')) || 0;
+  let initialBalance = 0, paid = 0;
   if (k === 'prepaid') {
-    const v = prompt(`'${clean}'에 지금 남아 있는 잔액이 있으면 입력하세요.\n(없으면 0, 앞으로 '충전'으로 기록하면 돼요)`, '0');
-    initialBalance = Number(String(v || '0').replace(/\D/g, '')) || 0;
+    initialBalance = num(prompt(`'${clean}'에 지금 남아 있는 잔액(충전된 금액)을 입력하세요.\n(없으면 0, 앞으로 '충전'으로 기록하면 돼요)`, '0'));
+    if (initialBalance) {
+      // 실제 낸 돈을 적으면 오늘 '충전' 내역으로 기록해서 지출에 잡는다
+      paid = num(prompt(`이 ${won(initialBalance)}을 충전할 때 실제로 낸 돈을 입력하세요.\n(예: 10% 할인이면 ${fmt(Math.round(initialBalance * 0.9))})\n\n· 입력하면 오늘 날짜 '충전' 지출로 기록돼요\n· 예전에 충전해서 지출로 안 잡을 거면 비워 두세요`, ''));
+    }
   }
   try {
-    const p = await store.addPaymentMethod({ name: clean, kind: k, initialBalance });
-    await log('add', 'payment', `${k === 'prepaid' ? '🎫' : '💳'} 결제수단 ${clean}${initialBalance ? ` (잔액 ${won(initialBalance)})` : ''}`);
-    toast('결제수단을 추가했어요');
+    const p = await store.addPaymentMethod({ name: clean, kind: k, initialBalance: paid ? 0 : initialBalance });
+    await log('add', 'payment', `${k === 'prepaid' ? '🎫' : '💳'} 결제수단 ${clean}${initialBalance && !paid ? ` (잔액 ${won(initialBalance)})` : ''}`);
+    if (paid) {
+      const tx = { type: 'charge', amount: initialBalance, paidAmount: paid !== initialBalance ? paid : null, who: me || 'a',
+        memo: '처음 등록', categoryId: null, paymentId: p.id, excluded: false, date: todayStr() };
+      await store.addTx(tx);
+      await log('add', 'tx', txText(tx));
+    }
+    toast(paid ? `추가했어요 · ${won(paid)} 충전 지출로 기록` : '결제수단을 추가했어요');
     return p;
   } catch (err) {
     toast('추가하지 못했어요: ' + err.message);

@@ -145,7 +145,7 @@ begin
   select hid, c.type, c.emoji, c.name from (values
     ('expense', '🍚', '식비'), ('expense', '☕', '카페·간식'), ('expense', '🧻', '생활용품'),
     ('expense', '🚌', '교통'), ('expense', '🏠', '주거·관리비'), ('expense', '📱', '통신'),
-    ('expense', '💊', '의료'), ('expense', '👕', '쇼핑'), ('expense', '🎬', '문화·여가'),
+    ('expense', '💊', '의료'), ('expense', '🍼', '임신·육아'), ('expense', '👕', '쇼핑'), ('expense', '🎬', '문화·여가'),
     ('expense', '🎁', '경조사·선물'), ('expense', '📦', '기타'),
     ('income', '💰', '월급'), ('income', '💵', '부수입'), ('income', '🪙', '기타 수입')
   ) as c(type, emoji, name);

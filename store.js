@@ -17,6 +17,7 @@ const DEFAULT_CATS = [
   ['expense', '🏠', '주거·관리비'],
   ['expense', '📱', '통신'],
   ['expense', '💊', '의료'],
+  ['expense', '🍼', '임신·육아'],
   ['expense', '👕', '쇼핑'],
   ['expense', '🎬', '문화·여가'],
   ['expense', '🎁', '경조사·선물'],

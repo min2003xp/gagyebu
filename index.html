@@ -145,6 +145,53 @@
     </form>
   </dialog>
 
+  <dialog id="prepaid-dialog" class="sheet">
+    <form id="prepaid-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2>🎫 상품권·선불카드 추가</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+
+      <label class="field">
+        <span class="field-label">이름</span>
+        <input id="pp-name" maxlength="20" placeholder="예: 성남사랑상품권, 온누리상품권">
+      </label>
+
+      <div class="field">
+        <span class="field-label">충전된 금액 (지금 잔액)</span>
+        <label class="amount-field">
+          <input id="pp-amount" class="money" inputmode="numeric" autocomplete="off" placeholder="0">
+          <b>원</b>
+        </label>
+        <small class="muted">아직 충전 전이면 0으로 두고, 나중에 [충전] 버튼으로 기록하세요.</small>
+      </div>
+
+      <div class="field" id="pp-mode-field">
+        <span class="field-label">이 금액은</span>
+        <div class="seg" id="pp-mode">
+          <button type="button" data-mode="new" class="active">이번에 충전 (지출로 기록)</button>
+          <button type="button" data-mode="old">예전부터 있던 돈</button>
+        </div>
+      </div>
+
+      <label class="field" id="pp-paid-field">
+        <span class="field-label">실제 낸 돈 (할인 충전일 때만)</span>
+        <input id="pp-paid" class="money" inputmode="numeric" autocomplete="off" placeholder="충전 금액과 같으면 비워두세요">
+      </label>
+
+      <label class="field" id="pp-date-field">
+        <span class="field-label">충전한 날짜</span>
+        <input id="pp-date" type="date">
+      </label>
+
+      <p class="muted" id="pp-hint" style="margin:0"></p>
+
+      <div class="sheet-actions">
+        <button type="submit" class="btn primary">저장</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="news-dialog" class="sheet">
     <div class="sheet-body">
       <div class="sheet-head">

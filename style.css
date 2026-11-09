@@ -105,6 +105,14 @@ main {
 .tx + .tx, .rec-row + .rec-row { border-top: 1px solid var(--line); }
 .tx:active { background: var(--surface-2); }
 .tx { cursor: pointer; }
+/* 카드 실적 */
+.card-perf .big-number { margin-top: 2px; }
+.fill.done { background: var(--income); }
+.ok { color: var(--income); }
+.card-perf details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.card-perf summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 4px 0; }
+.card-tx { margin: 4px -18px -8px; }
+.card-perf .budget-head { align-items: center; }
 /* 지출에 포함 스위치 */
 .sw {
   flex: none; position: relative; width: 38px; height: 22px; border-radius: 11px; border: 0; padding: 0;

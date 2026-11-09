@@ -181,7 +181,54 @@ function render() {
   $('#fab').hidden = view === 'settings' || view === 'assets';
   $$('.view').forEach(v => v.classList.toggle('active', v.id === `view-${view}`));
   $$('.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  ({ list: renderList, stats: renderStats, budget: renderBudget, assets: renderAssets, settings: renderSettings })[view]();
+  ({ list: renderList, stats: renderStats, budget: renderBudget, cards: renderCards, assets: renderAssets, settings: renderSettings })[view]();
+}
+
+/* ---------- 카드 실적 ---------- */
+// 그 카드로 결제한 지출은 '통계 제외'로 둔 것도 실적에 넣는다 (카드사는 결제 금액으로 계산하니까)
+function renderCards() {
+  const list = txOfMonth(current).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
+  const mLabel = `${Number(current.slice(5))}월`;
+  const cards = pays().filter(p => p.kind !== 'prepaid');
+  const noPay = list.filter(t => t.type === 'expense' && !t.paymentId);
+  let html = '';
+
+  if (!cards.length) {
+    html += `<div class="empty"><p style="font-size:40px">💳</p><p><b>등록한 카드가 없어요</b></p>
+      <p>카드를 등록하면 달마다 얼마나 썼는지, 실적까지 얼마 남았는지 보여드려요.</p></div>`;
+  } else {
+    html += cards.map(c => {
+      const txs = list.filter(t => t.type === 'expense' && t.paymentId === c.id);
+      const used = txs.reduce((a, t) => a + t.amount, 0);
+      const target = c.target || 0;
+      const r = target ? used / target : 0;
+      const done = target && used >= target;
+      const goal = !target ? '<span class="muted">실적 목표를 정하면 남은 금액을 알려드려요</span>'
+        : done ? `<b class="ok">✅ 실적 달성${used > target ? ` (+${won(used - target)})` : ''}</b>`
+        : `<span>목표까지 <b>${won(target - used)}</b> 남음</span>`;
+      return `<div class="card pad card-perf">
+        <div class="budget-head"><h3>💳 ${esc(c.name)}</h3>
+          <button class="btn small" data-act="set-target" data-id="${esc(c.id)}">${target ? `목표 ${short(target)}` : '목표 정하기'}</button></div>
+        <div class="big-number">${won(used)}</div>
+        ${target ? `<div class="track" style="margin-top:10px"><span class="fill ${done ? 'done' : ''}" style="width:${Math.min(100, r * 100).toFixed(1)}%"></span></div>` : ''}
+        <div class="budget-meta">${goal}${target ? `<span>${Math.round(r * 100)}%</span>` : ''}</div>
+        ${txs.length ? `<details><summary>${mLabel} 사용 내역 ${txs.length}건</summary>
+          <div class="card-tx">${txs.map(txRow).join('')}</div></details>`
+          : `<p class="muted" style="margin:8px 0 0">${mLabel}에는 이 카드로 쓴 내역이 없어요.</p>`}
+      </div>`;
+    }).join('');
+  }
+
+  if (noPay.length) {
+    html += `<div class="card pad">
+      <h3>❔ 카드를 안 고른 지출 ${noPay.length}건</h3>
+      <p class="muted" style="margin:0 0 6px">눌러서 어떤 카드로 썼는지 골라 주면 실적에 들어가요.</p>
+      <div class="card-tx">${noPay.map(txRow).join('')}</div>
+    </div>`;
+  }
+  html += `<button class="btn primary block" data-act="add-card" style="margin-bottom:14px">+ 카드 등록</button>
+    <p class="muted" style="font-size:13px;text-align:center">카드 실적은 그 달 1일~말일에 그 카드로 결제한 지출을 더한 금액이에요.<br>카드사마다 실적에서 빼는 항목(세금, 상품권 등)이 있어 조금 다를 수 있어요.</p>`;
+  $('#view-cards').innerHTML = html;
 }
 
 // '지출에 포함' 스위치 (끄면 지출 합계·통계·예산에서 빠짐. 상품권 충전은 잔액은 그대로)
@@ -816,11 +863,13 @@ dlg.addEventListener('click', e => {
 // 새 결제수단 등록 (kind 를 정해서 부르면 묻지 않는다)
 async function addPaymentMethod(kind = null) {
   if (kind === 'prepaid') return openPrepaid();
-  const name = prompt('결제수단 이름을 입력하세요.\n(예: 현대카드, 하나카드, 현금, 성남사랑상품권)');
+  const name = prompt(kind === 'card'
+    ? '카드 이름을 입력하세요.\n(예: 현대카드, 하나카드 (아내))'
+    : '결제수단 이름을 입력하세요.\n(예: 현대카드, 하나카드, 현금, 성남사랑상품권)');
   if (!name || !name.trim()) return null;
   const clean = name.trim().slice(0, 20);
   if (pays().some(p => p.name === clean)) { toast('이미 있는 이름이에요'); return pays().find(p => p.name === clean); }
-  if (confirm(`'${clean}'은(는) 충전해서 쓰는 상품권·선불카드인가요?\n\n확인 = 충전식 (잔액 관리)\n취소 = 일반 카드·현금`)) return openPrepaid(clean);
+  if (kind !== 'card' && confirm(`'${clean}'은(는) 충전해서 쓰는 상품권·선불카드인가요?\n\n확인 = 충전식 (잔액 관리)\n취소 = 일반 카드·현금`)) return openPrepaid(clean);
   try {
     const p = await store.addPaymentMethod({ name: clean, kind: 'card', initialBalance: 0 });
     await log('add', 'payment', `💳 결제수단 ${clean}`);
@@ -1063,16 +1112,19 @@ $$('.tabbar button').forEach(b => b.addEventListener('click', () => {
   window.scrollTo(0, 0);
 }));
 
-$('#view-list').addEventListener('click', e => {
-  if (e.target.closest('[data-act]')) return; // 스위치 등은 따로 처리
-  const row = e.target.closest('.tx');
-  if (!row) return;
-  const tx = D().transactions.find(t => t.id === row.dataset.id);
-  if (tx) openTx({ tx });
-});
-$('#view-list').addEventListener('keydown', e => {
-  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('tx')) { e.preventDefault(); e.target.click(); }
-});
+// 내역 줄을 누르면 수정 창 (내역 탭, 카드 탭)
+for (const v of ['#view-list', '#view-cards']) {
+  $(v).addEventListener('click', e => {
+    if (e.target.closest('[data-act]')) return; // 스위치 등은 따로 처리
+    const row = e.target.closest('.tx');
+    if (!row) return;
+    const tx = D().transactions.find(t => t.id === row.dataset.id);
+    if (tx) openTx({ tx });
+  });
+  $(v).addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('tx')) { e.preventDefault(); e.target.click(); }
+  });
+}
 
 // 금액 입력칸: 입력하는 동안 세 자리마다 쉼표
 document.addEventListener('input', e => {
@@ -1113,6 +1165,21 @@ document.addEventListener('click', async e => {
   else if (act === 'charge') openTx({ type: 'charge', paymentId: btn.dataset.pay });
   else if (act === 'add-prepaid') addPaymentMethod('prepaid');
   else if (act === 'add-pay') addPaymentMethod();
+  else if (act === 'add-card') addPaymentMethod('card');
+  else if (act === 'set-target') {
+    const p = payById(btn.dataset.id);
+    if (!p) return;
+    const v = prompt(`'${p.name}' 한 달 실적 목표 금액을 입력하세요.\n(예: 300000, 없애려면 0)`, p.target ? String(p.target) : '');
+    if (v === null) return;
+    const target = num(v);
+    try {
+      await store.updatePaymentMethod(p.id, { target });
+      await log('update', 'payment', `💳 ${p.name} 실적 목표 ${target ? won(target) : '없음'}`);
+      toast(target ? `실적 목표 ${won(target)}` : '실적 목표를 없앴어요');
+    } catch (err) {
+      toast('저장하지 못했어요: ' + err.message);
+    }
+  }
   else if (act === 'toggle-excl') {
     const t = D().transactions.find(x => x.id === btn.dataset.id);
     if (!t) return;

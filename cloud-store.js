@@ -40,7 +40,7 @@ const map = {
     order: 'created_at',
   },
   payment_methods: {
-    in: r => ({ id: r.id, name: r.name, kind: r.kind, initialBalance: Number(r.initial_balance) }),
+    in: r => ({ id: r.id, name: r.name, kind: r.kind, initialBalance: Number(r.initial_balance), target: Number(r.target || 0) }),
     out: p => ({ name: p.name, kind: p.kind, initial_balance: p.initialBalance ?? 0 }),
     order: 'created_at',
   },

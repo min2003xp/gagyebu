@@ -58,7 +58,7 @@ const txOfMonth = key => D().transactions.filter(t => t.date.startsWith(key));
 //  - 상품권으로 '사용'한 지출은 자동 제외 (충전 때 이미 셌으니까)
 //  - '통계에서 제외' 체크한 내역도 제외
 const isPrepaidUse = t => t.type === 'expense' && payById(t.paymentId)?.kind === 'prepaid';
-const isSpend = t => t.type === 'charge' || (t.type === 'expense' && !t.excluded && !isPrepaidUse(t));
+const isSpend = t => (t.type === 'charge' && !t.excluded) || (t.type === 'expense' && !t.excluded && !isPrepaidUse(t));
 const spendAmount = t => (t.type === 'charge' ? (t.paidAmount || t.amount) : t.amount);
 const sum = (list, type) => type === 'expense'
   ? list.filter(isSpend).reduce((a, t) => a + spendAmount(t), 0)
@@ -184,15 +184,19 @@ function render() {
   ({ list: renderList, stats: renderStats, budget: renderBudget, assets: renderAssets, settings: renderSettings })[view]();
 }
 
+// '지출에 포함' 스위치 (끄면 지출 합계·통계·예산에서 빠짐. 상품권 충전은 잔액은 그대로)
+const exclSwitch = t => `<button class="sw ${t.excluded ? '' : 'on'}" data-act="toggle-excl" data-id="${esc(t.id)}" role="switch" aria-checked="${!t.excluded}" aria-label="지출에 포함" title="${t.excluded ? '지출에서 빠져 있어요 (누르면 포함)' : '지출에 포함돼요 (누르면 제외)'}"></button>`;
+
 function txRow(t) {
   if (t.type === 'charge') {
     // 충전 = 지출 (실제 낸 돈), 잔액은 충전 금액만큼 늘어남
-    const sub = ['충전', names()[t.who], `잔액 +${won(t.amount)}`].filter(Boolean).map(esc).join(' · ');
-    return `<button class="tx" data-id="${esc(t.id)}">
+    const sub = ['충전', names()[t.who], `잔액 +${won(t.amount)}`, t.excluded ? '지출 제외' : ''].filter(Boolean).map(esc).join(' · ');
+    return `<div class="tx" role="button" tabindex="0" data-id="${esc(t.id)}">
       <span class="dot" style="--c:#8a5cc7">🎫</span>
       <span class="tx-main"><b>${esc(t.memo || payName(t.paymentId) + ' 충전')}</b><small>${sub}</small></span>
-      <span class="tx-amt expense">-${fmt(spendAmount(t))}</span>
-    </button>`;
+      <span class="tx-amt ${t.excluded ? 'excluded' : 'expense'}">-${fmt(spendAmount(t))}</span>
+      ${exclSwitch(t)}
+    </div>`;
   }
   const c = catById(t.categoryId);
   const prepaid = isPrepaidUse(t);
@@ -201,9 +205,7 @@ function txRow(t) {
     .filter(Boolean).map(esc).join(' · ');
   const cls = prepaid ? 'charge' : t.excluded ? 'excluded' : t.type;
   // 일반 지출에는 '지출에 포함' 스위치 (끄면 통계·합계에서 빠짐)
-  const sw = t.type === 'expense' && !prepaid
-    ? `<button class="sw ${t.excluded ? '' : 'on'}" data-act="toggle-excl" data-id="${esc(t.id)}" role="switch" aria-checked="${!t.excluded}" aria-label="지출에 포함" title="${t.excluded ? '지출에서 빠져 있어요 (누르면 포함)' : '지출에 포함돼요 (누르면 제외)'}"></button>`
-    : '';
+  const sw = t.type === 'expense' && !prepaid ? exclSwitch(t) : '';
   return `<div class="tx" role="button" tabindex="0" data-id="${esc(t.id)}">
     <span class="dot" style="--c:${catColor(c.id)}">${esc(c.emoji)}</span>
     <span class="tx-main"><b>${esc(t.memo || c.name)}</b><small>${sub}</small></span>
@@ -769,7 +771,10 @@ function renderForm() {
   $('#field-pay').hidden = form.type === 'income';
   const prepaidUse = form.type === 'expense' && payById(form.paymentId)?.kind === 'prepaid';
   $('#prepaid-hint').hidden = !prepaidUse;
-  $('#field-excluded').hidden = charge || prepaidUse;
+  $('#field-excluded').hidden = prepaidUse || form.mode === 'recurring';
+  $('#field-excluded small').textContent = charge
+    ? '예전에 충전해 둔 돈이라 이번 지출로 잡지 않을 때 (잔액은 그대로)'
+    : '이체, 카드값 납부처럼 실제 소비가 아닌 돈';
 
   if (!charge) {
     const list = cats(form.type);
@@ -905,7 +910,7 @@ $('#tx-form').addEventListener('submit', async e => {
     categoryId: charge ? null : form.categoryId,
     paymentId: form.type === 'income' ? null : form.paymentId,
     // 상품권 사용은 규칙으로 자동 제외되므로 체크값은 저장하지 않는다
-    excluded: charge || (form.type === 'expense' && payById(form.paymentId)?.kind === 'prepaid') ? false : $('#tx-excluded').checked,
+    excluded: form.type === 'expense' && payById(form.paymentId)?.kind === 'prepaid' ? false : $('#tx-excluded').checked,
     paidAmount: charge && paid && paid !== amount ? paid : null,
   };
 

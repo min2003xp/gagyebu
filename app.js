@@ -200,11 +200,16 @@ function txRow(t) {
   const sub = [c.name, payName(t.paymentId), names()[t.who], t.recurringKey ? '고정' : '', tag]
     .filter(Boolean).map(esc).join(' · ');
   const cls = prepaid ? 'charge' : t.excluded ? 'excluded' : t.type;
-  return `<button class="tx" data-id="${esc(t.id)}">
+  // 일반 지출에는 '지출에 포함' 스위치 (끄면 통계·합계에서 빠짐)
+  const sw = t.type === 'expense' && !prepaid
+    ? `<button class="sw ${t.excluded ? '' : 'on'}" data-act="toggle-excl" data-id="${esc(t.id)}" role="switch" aria-checked="${!t.excluded}" aria-label="지출에 포함" title="${t.excluded ? '지출에서 빠져 있어요 (누르면 포함)' : '지출에 포함돼요 (누르면 제외)'}"></button>`
+    : '';
+  return `<div class="tx" role="button" tabindex="0" data-id="${esc(t.id)}">
     <span class="dot" style="--c:${catColor(c.id)}">${esc(c.emoji)}</span>
     <span class="tx-main"><b>${esc(t.memo || c.name)}</b><small>${sub}</small></span>
     <span class="tx-amt ${cls}">${t.type === 'expense' ? '-' : '+'}${fmt(t.amount)}</span>
-  </button>`;
+    ${sw}
+  </div>`;
 }
 
 function renderList() {
@@ -1005,10 +1010,14 @@ $$('.tabbar button').forEach(b => b.addEventListener('click', () => {
 }));
 
 $('#view-list').addEventListener('click', e => {
+  if (e.target.closest('[data-act]')) return; // 스위치 등은 따로 처리
   const row = e.target.closest('.tx');
   if (!row) return;
   const tx = D().transactions.find(t => t.id === row.dataset.id);
   if (tx) openTx({ tx });
+});
+$('#view-list').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('tx')) { e.preventDefault(); e.target.click(); }
 });
 
 // 금액 입력칸: 입력하는 동안 세 자리마다 쉼표
@@ -1050,6 +1059,14 @@ document.addEventListener('click', async e => {
   else if (act === 'charge') openTx({ type: 'charge', paymentId: btn.dataset.pay });
   else if (act === 'add-prepaid') addPaymentMethod('prepaid');
   else if (act === 'add-pay') addPaymentMethod();
+  else if (act === 'toggle-excl') {
+    const t = D().transactions.find(x => x.id === btn.dataset.id);
+    if (!t) return;
+    const excluded = !t.excluded;
+    await store.updateTx(t.id, { excluded });
+    await log('update', 'tx', `${txText(t)} → ${excluded ? '지출에서 제외' : '지출에 다시 포함'}`);
+    toast(excluded ? '지출에서 뺐어요' : '지출에 다시 넣었어요');
+  }
   else if (act === 'rename-pay') {
     const p = payById(btn.dataset.id);
     if (!p) return;

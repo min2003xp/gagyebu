@@ -207,7 +207,7 @@ function renderCards() {
         : done ? `<b class="ok">✅ 실적 달성${used > target ? ` (+${won(used - target)})` : ''}</b>`
         : `<span>목표까지 <b>${won(target - used)}</b> 남음</span>`;
       return `<div class="card pad card-perf">
-        <div class="budget-head"><h3>💳 ${esc(c.name)}</h3>
+        <div class="budget-head"><h3 class="card-name" data-act="rename-pay" data-id="${esc(c.id)}" role="button" title="눌러서 이름 바꾸기">💳 ${esc(c.name)} <span class="edit-hint">✏️</span></h3>
           <button class="btn small" data-act="set-target" data-id="${esc(c.id)}">${target ? `목표 ${short(target)}` : '목표 정하기'}</button></div>
         <div class="big-number">${won(used)}</div>
         ${target ? `<div class="track" style="margin-top:10px"><span class="fill ${done ? 'done' : ''}" style="width:${Math.min(100, r * 100).toFixed(1)}%"></span></div>` : ''}

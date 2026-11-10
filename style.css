@@ -105,6 +105,18 @@ main {
 .tx + .tx, .rec-row + .rec-row { border-top: 1px solid var(--line); }
 .tx:active { background: var(--surface-2); }
 .tx { cursor: pointer; }
+/* 카테고리 추가 창 */
+.cat-preview { display: flex; align-items: center; gap: 12px; margin: 14px 0 4px; }
+.cat-preview .dot { --c: var(--accent); width: 48px; height: 48px; font-size: 26px; }
+.cat-preview input { flex: 1; min-width: 0; }
+.emoji-groups { display: flex; flex-direction: column; gap: 10px; max-height: 40vh; overflow-y: auto;
+  padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+.emoji-group small { color: var(--muted); font-size: 12px; }
+.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 4px; margin-top: 4px; }
+.emoji-grid button { border: 0; background: transparent; font-size: 22px; height: 40px; border-radius: 10px; cursor: pointer; }
+.emoji-grid button.active { background: color-mix(in srgb, var(--accent) 22%, transparent); outline: 2px solid var(--accent); }
+.emoji-own { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.emoji-own input { width: 110px; text-align: center; }
 /* 카드 실적 */
 .card-perf .big-number { margin-top: 2px; }
 .fill.done { background: var(--income); }

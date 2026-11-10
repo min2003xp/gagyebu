@@ -702,7 +702,7 @@ function renderSettings() {
   const n = names();
   const rec = D().recurring;
   const chips = type => cats(type).map(c =>
-    `<span class="chip">${esc(c.emoji)} ${esc(c.name)}<button class="x" data-act="del-cat" data-id="${esc(c.id)}" aria-label="${esc(c.name)} 삭제">×</button></span>`
+    `<span class="chip" data-act="edit-cat" data-id="${esc(c.id)}" role="button">${esc(c.emoji)} ${esc(c.name)}<button class="x" data-act="del-cat" data-id="${esc(c.id)}" aria-label="${esc(c.name)} 삭제">×</button></span>`
   ).join('') + `<button class="chip add" data-act="add-cat" data-type="${type}">+ 추가</button>`;
 
   $('#view-settings').innerHTML = `
@@ -828,7 +828,7 @@ function renderForm() {
     if (!list.some(c => c.id === form.categoryId)) form.categoryId = list[0]?.id || null;
     $('#tx-cats').innerHTML = list.map(c =>
       `<button type="button" class="chip ${c.id === form.categoryId ? 'active' : ''}" data-cat="${esc(c.id)}">${esc(c.emoji)} ${esc(c.name)}</button>`
-    ).join('');
+    ).join('') + '<button type="button" class="chip add" data-addcat>+ 새 카테고리</button>';
   }
 
   // 결제수단: 충전일 땐 충전식만, 지출일 땐 전부 (자주 쓴 순서)
@@ -855,6 +855,9 @@ dlg.addEventListener('click', e => {
     form.paymentId = form.paymentId === t.dataset.pay && form.type !== 'charge' ? null : t.dataset.pay;
     renderForm();
   }
+  else if (t.hasAttribute('data-addcat')) {
+    openCategory({ type: form.type }).then(c => { if (c) { form.categoryId = c.id; renderForm(); } });
+  }
   else if (t.hasAttribute('data-addpay')) {
     addPaymentMethod(t.dataset.addpay || null).then(p => { if (p) { form.paymentId = p.id; renderForm(); } });
   }
@@ -880,6 +883,91 @@ async function addPaymentMethod(kind = null) {
     return null;
   }
 }
+
+/* ---------- 카테고리 추가·수정 창 ---------- */
+const EMOJI_GROUPS = [
+  ['먹거리', '🍚 🍜 🍕 🍔 🍗 🍣 🥗 🍱 ☕ 🧋 🍰 🍺 🍷 🛒 🥬 🍎'],
+  ['생활', '🏠 🧻 🧺 🧴 🛋️ 💡 💧 🔥 📱 💻 📺 🧹 🔧 🪴'],
+  ['교통·차', '🚌 🚇 🚕 🚗 ⛽ 🅿️ 🛣️ 🚆 ✈️ 🚲 🛵'],
+  ['임신·육아·가족', '🤰 👶 🍼 🧸 🎒 ✏️ 📚 👨‍👩‍👧 👵 💝'],
+  ['건강·미용', '💊 🏥 🦷 👓 💪 🧘 💇 💅 💄 🧖'],
+  ['쇼핑·옷', '👕 👗 👟 👜 💍 🛍️ 📦 🎁'],
+  ['여가·취미', '🎬 🎮 🎤 🎨 📷 ⚽ ⛳ 🎣 🏕️ 🎢 🎵 📖'],
+  ['여행', '🧳 🏨 🗺️ 🏖️ ⛰️ 🎫'],
+  ['반려동물', '🐶 🐱 🐾 🦴'],
+  ['돈·금융', '💰 💵 💳 🏦 📈 🪙 🧾 🏛️ 💸 🛡️ 🎉 🤝'],
+  ['기타', '🏷️ 📌 ⭐ ❤️ 🙏 📦 ❓'],
+].map(([label, s]) => [label, [...new Set(s.split(' '))]]);
+
+const cdlg = $('#cat-dialog');
+let cform = { id: null, type: 'expense', emoji: '🏷️', resolve: null };
+
+function renderCatForm() {
+  $$('#cat-type [data-ctype]').forEach(b => b.classList.toggle('active', b.dataset.ctype === cform.type));
+  $('#cat-type').hidden = !!cform.id;
+  $('#cat-emoji-preview').textContent = cform.emoji;
+  $$('#cat-emojis [data-emoji]').forEach(b => b.classList.toggle('active', b.dataset.emoji === cform.emoji));
+}
+
+function openCategory({ type = 'expense', cat = null } = {}) {
+  cform = { id: cat?.id || null, type: cat?.type || type, emoji: cat?.emoji || '🏷️', resolve: null };
+  $('#cat-title').textContent = cat ? '카테고리 수정' : '카테고리 추가';
+  $('#cat-name').value = cat?.name || '';
+  $('#cat-emoji-own').value = '';
+  $('#cat-delete').hidden = !cat;
+  $('#cat-emojis').innerHTML = EMOJI_GROUPS.map(([label, list]) => `<div class="emoji-group">
+    <small>${esc(label)}</small>
+    <div class="emoji-grid">${list.map(e => `<button type="button" data-emoji="${esc(e)}" aria-label="${esc(e)}">${esc(e)}</button>`).join('')}</div>
+  </div>`).join('');
+  renderCatForm();
+  cdlg.showModal();
+  if (!cat) $('#cat-name').focus();
+  return new Promise(r => { cform.resolve = r; });
+}
+
+cdlg.addEventListener('click', e => {
+  if (e.target === cdlg || e.target.closest('[data-close]')) return cdlg.close();
+  const em = e.target.closest('[data-emoji]');
+  if (em) { cform.emoji = em.dataset.emoji; $('#cat-emoji-own').value = ''; renderCatForm(); }
+  const ty = e.target.closest('[data-ctype]');
+  if (ty) { cform.type = ty.dataset.ctype; renderCatForm(); }
+});
+$('#cat-emoji-own').addEventListener('input', e => {
+  const m = e.target.value.match(/\p{Extended_Pictographic}(️|‍\p{Extended_Pictographic})*️?/u);
+  if (m) { cform.emoji = m[0]; renderCatForm(); }
+});
+cdlg.addEventListener('close', () => { cform.resolve?.(null); cform.resolve = null; });
+
+$('#cat-delete').addEventListener('click', async () => {
+  const c = catById(cform.id);
+  if (!confirm(`'${c.name}' 카테고리를 삭제할까요?\n이 카테고리로 적은 내역은 지워지지 않아요.`)) return;
+  await store.deleteCategory(c.id);
+  cdlg.close();
+  toast('카테고리를 삭제했어요');
+});
+
+$('#cat-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('#cat-name').value.trim().slice(0, 12);
+  if (!name) return toast('이름을 적어 주세요');
+  if (cats(cform.type).some(c => c.id !== cform.id && c.name === name)) return toast('이미 있는 이름이에요');
+  try {
+    let item;
+    if (cform.id) {
+      await store.updateCategory(cform.id, { name, emoji: cform.emoji });
+      item = catById(cform.id);
+      toast('카테고리를 바꿨어요');
+    } else {
+      item = await store.addCategory({ type: cform.type, emoji: cform.emoji, name });
+      toast('카테고리를 추가했어요');
+    }
+    const resolve = cform.resolve; cform.resolve = null;
+    cdlg.close();
+    resolve?.(item);
+  } catch (err) {
+    toast('저장하지 못했어요: ' + err.message);
+  }
+});
 
 /* ---------- 상품권·선불카드 등록 창 ---------- */
 const pdlg = $('#prepaid-dialog');
@@ -1239,13 +1327,8 @@ document.addEventListener('click', async e => {
       await log('delete', 'recurring', `고정 항목 ${txText(r)}`);
     }
   }
-  else if (act === 'add-cat') {
-    const input = prompt('새 카테고리 이름을 입력하세요.\n앞에 이모지를 붙여도 돼요. (예: 🐶 반려동물)');
-    if (!input || !input.trim()) return;
-    const m = input.trim().match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.+)$/u);
-    await store.addCategory({ type: btn.dataset.type, emoji: m ? m[1] : '🏷️', name: (m ? m[2] : input).trim().slice(0, 12) });
-    toast('카테고리를 추가했어요');
-  }
+  else if (act === 'add-cat') openCategory({ type: btn.dataset.type });
+  else if (act === 'edit-cat') { const c = catById(btn.dataset.id); if (c) openCategory({ cat: c }); }
   else if (act === 'del-cat') {
     const c = catById(btn.dataset.id);
     if (confirm(`'${c.name}' 카테고리를 삭제할까요?\n이 카테고리로 적은 내역은 지워지지 않아요.`)) await store.deleteCategory(c.id);

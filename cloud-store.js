@@ -221,6 +221,7 @@ export function createCloudStore() {
     deleteTx: id => remove('transactions', id),
 
     addCategory: c => insert('categories', c),
+    updateCategory: (id, patch) => update('categories', id, patch),
     deleteCategory: id => remove('categories', id),
 
     setBudgets: budgets => updateHousehold({ budgets }),

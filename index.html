@@ -147,6 +147,39 @@
     </form>
   </dialog>
 
+  <dialog id="cat-dialog" class="sheet">
+    <form id="cat-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2 id="cat-title">카테고리 추가</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+
+      <div class="seg" id="cat-type">
+        <button type="button" data-ctype="expense">지출</button>
+        <button type="button" data-ctype="income">수입</button>
+      </div>
+
+      <div class="cat-preview">
+        <span class="dot" id="cat-emoji-preview">🏷️</span>
+        <input id="cat-name" maxlength="12" placeholder="이름 (예: 반려동물)">
+      </div>
+
+      <div class="field">
+        <span class="field-label">아이콘 고르기</span>
+        <div id="cat-emojis" class="emoji-groups"></div>
+        <label class="emoji-own">
+          <span>마음에 드는 게 없으면 직접 넣기</span>
+          <input id="cat-emoji-own" maxlength="8" placeholder="이모지 1개" autocomplete="off">
+        </label>
+      </div>
+
+      <div class="sheet-actions">
+        <button type="button" id="cat-delete" class="btn danger" hidden>삭제</button>
+        <button type="submit" class="btn primary">저장</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="prepaid-dialog" class="sheet">
     <form id="prepaid-form" method="dialog" novalidate>
       <div class="sheet-head">

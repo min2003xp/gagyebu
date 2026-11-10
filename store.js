@@ -82,7 +82,13 @@ export function createStore() {
     },
 
     async addCategory(c) {
-      data.categories.push({ ...c, id: uid() });
+      const item = { ...c, id: uid() };
+      data.categories.push(item);
+      commit();
+      return item;
+    },
+    async updateCategory(id, patch) {
+      data.categories = data.categories.map(c => (c.id === id ? { ...c, ...patch } : c));
       commit();
     },
     async deleteCategory(id) {

@@ -1,9 +1,9 @@
 // 서비스 워커: 홈 화면 앱 설치, 인터넷이 잠깐 끊겼을 때 화면 열기, 푸시 알림 받기
 
-const CACHE = 'gagyebu-v2';
+const CACHE = 'gagyebu-v3';
 const FILES = [
   './', 'index.html', 'style.css', 'app.js', 'store.js', 'cloud-store.js', 'digest.js', 'config.js',
-  'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
+  'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png', 'icons/badge-96.png',
 ];
 
 self.addEventListener('install', e => {
@@ -40,7 +40,7 @@ self.addEventListener('push', e => {
   e.waitUntil(self.registration.showNotification(d.title || '우리집 가계부', {
     body: d.body || '',
     icon: 'icons/icon-192.png',
-    badge: 'icons/icon-192.png',
+    badge: 'icons/badge-96.png', // 상태표시줄용: 투명 바탕 + 흰 장부(₩) 모양
     tag: 'gagyebu-digest',
     renotify: true,
     data: { url: d.url || './' },
